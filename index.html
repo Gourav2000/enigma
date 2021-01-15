@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Scraper</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600&display=swap" rel="stylesheet">
+
+</head>
+
+<body>
+    <div id="header">
+        <h1 id="heading">Scraper
+        </h1>
+    </div>
+    <div id="inst">
+        Make sure you are logged in before you press "scrap it" button
+    </div>
+    <div id="scrape">
+        <button class="but" id="scrape-but" type="button" onclick="openWindow()">scrape it!</button>
+        <button class="but" id="stop" type="button" onclick="openWindow()">stop</button>
+    </div>
+    <div class="data" id="data-cont">
+
+    </div>
+    <script>
+        var workerProcess;
+        var data_obj = {}
+
+        const child_process = require('child_process');
+        const kill = require('tree-kill');
+        var ipcRenderer = require('electron').ipcRenderer;
+        const {dialog}= require('electron').remote;
+        var OutputDirectory = "";
+        var session_data = ipcRenderer.on('session_data', function (event, data) {
+            session_data = data;
+            console.log(data);
+            console.log(typeof data);
+            console.log(typeof data.url);
+        }
+
+        );
+        var isScrapeActive = false;
+
+        async function openWindow() {
+            if (isScrapeActive == true) {
+                //workerProcess.kill("SIGINT")
+                console.log(workerProcess.pid)
+                kill(workerProcess.pid, "SIGINT");
+                document.getElementById("stop").style.display = "none"
+                document.getElementById("scrape-but").innerHTML = "scrape it"
+                isScrapeActive = false
+            }
+            else {
+                disable_enable(document.getElementById("scrape-but"))
+                OutputDirectory = ""
+                var files = await dialog.showOpenDialog({
+                    properties: ["openDirectory"]
+                })
+                OutputDirectory = files.filePaths[0];
+                console.log(OutputDirectory)
+                console.log("Scrape Press")
+
+                if (typeof OutputDirectory == "string") {
+                    isScrapeActive = true;
+                    workerProcess = child_process.spawn('scrape', [session_data.url, session_data.id, OutputDirectory]);
+                    document.getElementById("stop").style.display = "block"
+                    document.getElementById("scrape-but").innerHTML = "Scraping Active!"
+                    workerProcess.stdout.on('data', function (data) {
+                        var linkData = JSON.parse(data.toString())
+                        console.log('stdout: ' + data);
+                        console.log(Object.keys(linkData)[0])
+                        data_obj[Object.keys(linkData)[0]] = Object.values(linkData)[0]
+                        console.log(Object.values(data_obj)[0])
+                        displayData(data_obj)
+
+                    });
+                    workerProcess.stderr.on('data', function (data) {
+                        stop()
+                        console.log('stderr: ' + data);
+                        alert("Error: " + data);
+
+                    });
+                    workerProcess.on('close', function (code) {
+                        disable_enable(document.getElementById("scrape-but"))
+                        console.log('child process exited with code ' + code);
+                        isScrapeActive = false;
+                        document.getElementById("scrape-but").innerHTML = "scrape it"
+                        document.getElementById("stop").style.display = "none"
+                    });
+
+
+                } else {
+                    disable_enable(document.getElementById("scrape-but"))
+                    alert("Please choose Output folder !")
+                }
+            }
+        }
+
+
+
+        function displayData(data) {
+            var data_div = document.getElementById("data-cont")
+            data_div.innerHTML = ""
+            for (var i = 0; i < Object.keys(data).length; i++) {
+                var link_data = document.createElement('div')
+                link_data.classList.add('link')
+                if (data[Object.keys(data)[i]] == "completed")
+                    link_data.innerHTML = Object.keys(data)[i] + " | " + '<img class="tick" src="imgs/tick.png">'
+                else
+                    link_data.innerHTML = Object.keys(data)[i] + " | " + '<img class="load" src="imgs/loading.gif">'
+                //data[Object.keys(data)[i]]
+                data_div.appendChild(link_data)
+            }
+        }
+        function disable_enable(button) {
+            button.disabled = !button.disabled
+
+        }
+
+    </script>
+</body>
+
+</html>
